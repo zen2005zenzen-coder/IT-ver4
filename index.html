@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ITシラバス6.5 クイズ（完全版）</title>
+    <title>ITシラバス6.5 クイズ（除外機能版）</title>
     <style>
         body { font-family: 'Helvetica Neue', Arial, sans-serif; background: #f4f7f6; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
         #login-screen { background: white; padding: 40px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); text-align: center; margin-top: 50px; }
@@ -57,6 +57,7 @@
         <div class="question-header">
             <div class="question-box" id="q-text">問題を表示中...</div>
             <button id="star-btn" class="check-btn" onclick="toggleCheck()">★</button>
+            <button id="black-btn" class="check-btn" onclick="addToBlacklistDirectly()" title="ブラックボックス（除外）" style="font-size: 1.5rem;">⬛</button>
         </div>
         <div id="choices-container"></div>
         <div id="feedback">
@@ -72,6 +73,14 @@
     <div class="scroll-area" id="review-list-container">
         <div id="review-list">チェックした問題はありません。</div>
     </div>
+    
+    <div id="blacklist-container" style="margin-top: 30px; border-top: 2px dashed #ccc; padding-top: 20px;">
+        <h3 style="color: #333;">⬛ ブラックボックス（除外中）</h3>
+        <p style="font-size: 0.8rem; color: #666;">正解した問題、または⬛を押した問題はここに入り、出題されません。</p>
+        <div class="scroll-area" id="blacklist-list-container">
+            <div id="blacklist-list" style="font-size: 0.9rem; color: #666;">除外された問題はありません。</div>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -79,6 +88,7 @@
 let currentUser = "";
 let currentQuestion = null;
 let checkedIds = [];
+let blacklistedIds = []; 
 let totalSolved = 0;
 let correctTotal = 0;
 
@@ -897,8 +907,12 @@ function login() {
 
     const saved = localStorage.getItem('it-quiz-checked-' + currentUser);
     checkedIds = saved ? JSON.parse(saved) : [];
+
+    const savedBlack = localStorage.getItem('it-quiz-black-' + currentUser);
+    blacklistedIds = savedBlack ? JSON.parse(savedBlack) : [];
     
     renderReviewList();
+    renderBlacklist();
     loadQuestion();
     updateScoreboard();
 }
@@ -921,6 +935,8 @@ function setQuiz(questionObj) {
     document.getElementById('feedback').style.display = 'none';
     document.getElementById('next-btn').style.display = 'none';
     document.getElementById('star-btn').classList.toggle('active', checkedIds.includes(currentQuestion.id));
+    
+    updateBlacklistUI();
 
     const distractors = currentQuestion.d || [];
     const choices = [currentQuestion.a, ...distractors].sort(() => 0.5 - Math.random());
@@ -939,7 +955,14 @@ function setQuiz(questionObj) {
 }
 
 function loadQuestion() {
-    const randomQ = rawQuestions[Math.floor(Math.random() * rawQuestions.length)];
+    const availableQuestions = rawQuestions.filter(q => !blacklistedIds.includes(q.id));
+    
+    if (availableQuestions.length === 0) {
+        alert("全ての問題がブラックボックスに入っているか、問題がありません。");
+        return;
+    }
+
+    const randomQ = availableQuestions[Math.floor(Math.random() * availableQuestions.length)];
     setQuiz(randomQ);
 }
 
@@ -952,9 +975,17 @@ function checkAnswer(selected, correct, explanation) {
     totalSolved++;
     const feedback = document.getElementById('feedback');
     const isCorrect = selected === correct;
-    if (isCorrect) correctTotal++;
     
-    document.getElementById('result-label').innerText = isCorrect ? "✅ 正解！" : "❌ 不正解...（正解： " + correct + "）";
+    if (isCorrect) {
+        correctTotal++;
+        // ★正解した場合はブラックボックスに自動追加（確認なし）
+        if (!blacklistedIds.includes(currentQuestion.id)) {
+            blacklistedIds.push(currentQuestion.id);
+            saveAndSyncBlacklist();
+        }
+    }
+    
+    document.getElementById('result-label').innerText = isCorrect ? "✅ 正解！ (ブラックボックスに保存されました)" : "❌ 不正解...（正解： " + correct + "）";
     feedback.className = isCorrect ? "correct-ui" : "incorrect-ui";
     document.getElementById('explanation-text').innerText = "解説： " + explanation;
     feedback.style.display = 'block';
@@ -975,6 +1006,56 @@ function toggleCheck() {
     localStorage.setItem('it-quiz-checked-' + currentUser, JSON.stringify(checkedIds));
     document.getElementById('star-btn').classList.toggle('active', checkedIds.includes(currentQuestion.id));
     renderReviewList();
+}
+
+// --- ブラックボックス登録・解除ロジック ---
+// ★⬛ボタン：確認なしで即登録し、次の問題へ
+function addToBlacklistDirectly() {
+    if (!currentQuestion) return;
+    
+    if (!blacklistedIds.includes(currentQuestion.id)) {
+        blacklistedIds.push(currentQuestion.id);
+        saveAndSyncBlacklist();
+    }
+    loadQuestion(); // すぐに次の問題へ
+}
+
+function removeFromBlacklist(id) {
+    if(confirm("この問題を出題リストに戻しますか？")) {
+        blacklistedIds = blacklistedIds.filter(bid => bid !== id);
+        saveAndSyncBlacklist();
+    }
+}
+
+function saveAndSyncBlacklist() {
+    localStorage.setItem('it-quiz-black-' + currentUser, JSON.stringify(blacklistedIds));
+    renderBlacklist();
+    updateBlacklistUI();
+}
+
+function renderBlacklist() {
+    const listDiv = document.getElementById('blacklist-list');
+    if (blacklistedIds.length === 0) {
+        listDiv.innerHTML = "除外された問題はありません。";
+        return;
+    }
+    const blackItems = rawQuestions.filter(q => blacklistedIds.includes(q.id));
+    listDiv.innerHTML = blackItems.reverse().map(item => `
+        <div class="review-item" style="display: flex; justify-content: space-between; align-items: center; border-left: 4px solid #333;">
+            <div onclick="loadSpecificQuestion(${item.id})" style="flex-grow: 1; cursor: pointer;">
+                <strong>Q. ${item.q}</strong>
+            </div>
+            <button onclick="removeFromBlacklist(${item.id})" style="background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; margin-left: 10px; white-space: nowrap;">
+                復活
+            </button>
+        </div>
+    `).join('');
+}
+
+function updateBlacklistUI() {
+    const isBlack = blacklistedIds.includes(currentQuestion.id);
+    const btn = document.getElementById('black-btn');
+    btn.style.color = isBlack ? "#000" : "#ccc";
 }
 
 function renderReviewList() {
