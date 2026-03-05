@@ -2,22 +2,22 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>ITシラバス6.5 クイズ（ID自動割当版）</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ITシラバス6.5 クイズ（完全版）</title>
     <style>
-        /* スタイル部分は変更なし */
-        body { font-family: 'Helvetica Neue', Arial, sans-serif; background: #f4f7f6; display: flex; flex-direction: column; align-items: center; padding: 20px; }
-        #login-screen { background: white; padding: 40px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); text-align: center; }
+        body { font-family: 'Helvetica Neue', Arial, sans-serif; background: #f4f7f6; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
+        #login-screen { background: white; padding: 40px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); text-align: center; margin-top: 50px; }
         #game-container, #review-container { display: none; max-width: 700px; width: 100%; }
-        #game-container { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        #game-container { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); margin-bottom: 20px; margin-top: 20px; }
         .user-info { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 0.9rem; color: #666; }
         .logout-btn { background: #6c757d; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; }
         .scoreboard { display: flex; justify-content: space-around; background: #343a40; color: white; padding: 15px; border-radius: 10px; margin-bottom: 20px; font-weight: bold; }
         .score-val { display: block; font-size: 1.2rem; color: #ffc107; text-align: center; }
         .question-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px; }
         .question-box { font-size: 1.25rem; font-weight: bold; line-height: 1.6; flex-grow: 1; color: #333; }
-        .check-btn { background: none; border: none; font-size: 1.8rem; cursor: pointer; color: #ccc; transition: 0.2s; padding: 0 0 0 10px; }
+        .check-btn { background: none; border: none; font-size: 1.8rem; cursor: pointer; color: #ccc; transition: 0.2s; padding: 0 0 0 10px; outline: none; }
         .check-btn.active { color: #ffc107; }
-        .choice-btn { display: block; width: 100%; padding: 15px; margin: 10px 0; border: 2px solid #e0e0e0; border-radius: 8px; background: none; cursor: pointer; text-align: left; font-size: 1rem; transition: 0.2s; }
+        .choice-btn { display: block; width: 100%; padding: 15px; margin: 10px 0; border: 2px solid #e0e0e0; border-radius: 8px; background: white; cursor: pointer; text-align: left; font-size: 1rem; transition: 0.2s; }
         .choice-btn:hover:not(:disabled) { background: #f8f9fa; border-color: #007bff; }
         #feedback { margin-top: 20px; padding: 20px; border-radius: 8px; display: none; line-height: 1.6; }
         .correct-ui { background: #e8f5e9; border: 1px solid #c8e6c9; color: #2e7d32; }
@@ -27,16 +27,16 @@
         .review-item { border-bottom: 1px solid #eee; padding: 12px; cursor: pointer; border-radius: 5px; }
         .review-item:hover { background: #eef6ff; }
         .scroll-area { max-height: 400px; overflow-y: auto; }
-        input[type="text"] { padding: 10px; width: 200px; border: 1px solid #ccc; border-radius: 5px; margin-bottom: 10px; }
-        .btn-login { padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        input[type="text"] { padding: 12px; width: 250px; border: 1px solid #ccc; border-radius: 5px; margin-bottom: 15px; font-size: 1rem; }
+        .btn-login { padding: 12px 30px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 1rem; font-weight: bold; }
     </style>
 </head>
 <body>
 
 <div id="login-screen">
     <h2>ITクイズへようこそ</h2>
-    <p>名前を入力してください</p>
-    <input type="text" id="username-input" placeholder="ユーザー名">
+    <p>名前を入力して学習を始めましょう</p>
+    <input type="text" id="username-input" placeholder="ユーザー名を入力">
     <br>
     <button class="btn-login" onclick="login()">開始する</button>
 </div>
@@ -74,11 +74,17 @@
     </div>
 </div>
 
-
 <script>
-// 不正解の選択肢（distractors）を固定で持つ形式に変更
+// --- グローバル変数 ---
+let currentUser = "";
+let currentQuestion = null;
+let checkedIds = [];
+let totalSolved = 0;
+let correctTotal = 0;
+
+// --- クイズデータ ---
 const rawData = [
-  {
+ {
     "q": "企業経営の中核となる方向性を示すものをアルファベット3文字で何というか。",
     "a": "MVV（Mission Vision Value）",
     "d": ["KPI", "OKR", "BCP"],
@@ -872,13 +878,43 @@ const rawData = [
   }
 ];
 
-// 【重要】読み込み時に自動でユニークなIDを付与する
-const rawQuestions = rawData.map((item, index) => ({
-    ...item,
-    id: index + 1
-}));
+const rawQuestions = rawData.map((item, index) => ({ ...item, id: index + 1 }));
 
-// 省略: 既存のログイン・ログアウト等の処理は同じ
+// --- システム関数 ---
+
+function login() {
+    const nameInput = document.getElementById('username-input').value.trim();
+    if (!nameInput) {
+        alert("名前を入力してください");
+        return;
+    }
+    currentUser = nameInput;
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('game-container').style.display = 'block';
+    document.getElementById('review-container').style.display = 'block';
+    document.getElementById('display-name').innerText = currentUser;
+    document.getElementById('list-owner').innerText = currentUser;
+
+    const saved = localStorage.getItem('it-quiz-checked-' + currentUser);
+    checkedIds = saved ? JSON.parse(saved) : [];
+    
+    renderReviewList();
+    loadQuestion();
+    updateScoreboard();
+}
+
+function logout() {
+    if(confirm("ログアウトしますか？")) {
+        location.reload();
+    }
+}
+
+function updateScoreboard() {
+    const accuracy = totalSolved === 0 ? 0 : Math.round((correctTotal / totalSolved) * 100);
+    document.getElementById('total-count').innerText = totalSolved;
+    document.getElementById('correct-count').innerText = correctTotal;
+    document.getElementById('accuracy').innerText = accuracy + "%";
+}
 
 function setQuiz(questionObj) {
     currentQuestion = questionObj;
@@ -886,7 +922,6 @@ function setQuiz(questionObj) {
     document.getElementById('next-btn').style.display = 'none';
     document.getElementById('star-btn').classList.toggle('active', checkedIds.includes(currentQuestion.id));
 
-    // 以前の「他からランダム抽出」ではなく、定義された「d」を使用する
     const distractors = currentQuestion.d || [];
     const choices = [currentQuestion.a, ...distractors].sort(() => 0.5 - Math.random());
     
@@ -901,7 +936,62 @@ function setQuiz(questionObj) {
         btn.onclick = () => checkAnswer(choice, currentQuestion.a, currentQuestion.ex);
         container.appendChild(btn);
     });
-    window.scrollTo({ top: 0, behavior: 'smooth' });
 }
-// 以下の checkAnswer, toggleCheck, renderReviewList 等も元のままで動作します
+
+function loadQuestion() {
+    const randomQ = rawQuestions[Math.floor(Math.random() * rawQuestions.length)];
+    setQuiz(randomQ);
+}
+
+function loadSpecificQuestion(id) {
+    const target = rawQuestions.find(q => q.id === id);
+    if (target) setQuiz(target);
+}
+
+function checkAnswer(selected, correct, explanation) {
+    totalSolved++;
+    const feedback = document.getElementById('feedback');
+    const isCorrect = selected === correct;
+    if (isCorrect) correctTotal++;
+    
+    document.getElementById('result-label').innerText = isCorrect ? "✅ 正解！" : "❌ 不正解...（正解： " + correct + "）";
+    feedback.className = isCorrect ? "correct-ui" : "incorrect-ui";
+    document.getElementById('explanation-text').innerText = "解説： " + explanation;
+    feedback.style.display = 'block';
+    
+    updateScoreboard();
+    document.querySelectorAll('.choice-btn').forEach(b => b.disabled = true);
+    document.getElementById('next-btn').style.display = 'block';
+}
+
+function toggleCheck() {
+    if (!currentQuestion) return;
+    const index = checkedIds.indexOf(currentQuestion.id);
+    if (index > -1) {
+        checkedIds.splice(index, 1);
+    } else {
+        checkedIds.push(currentQuestion.id);
+    }
+    localStorage.setItem('it-quiz-checked-' + currentUser, JSON.stringify(checkedIds));
+    document.getElementById('star-btn').classList.toggle('active', checkedIds.includes(currentQuestion.id));
+    renderReviewList();
+}
+
+function renderReviewList() {
+    const listDiv = document.getElementById('review-list');
+    if (checkedIds.length === 0) {
+        listDiv.innerHTML = "チェックした問題はありません。";
+        return;
+    }
+    const checkedItems = rawQuestions.filter(q => checkedIds.includes(q.id));
+    listDiv.innerHTML = checkedItems.reverse().map(item => `
+        <div class="review-item" onclick="loadSpecificQuestion(${item.id})">
+            <strong>Q. ${item.q}</strong><br>
+            <small style="color:#007bff">クリックで再挑戦</small>
+        </div>
+    `).join('');
+}
 </script>
+
+</body>
+</html>
