@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ITシラバス6.5 クイズ（除外機能版）</title>
+    <title>ITシラバス6.5 クイズ（一括解除機能版）</title>
     <style>
         body { font-family: 'Helvetica Neue', Arial, sans-serif; background: #f4f7f6; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
         #login-screen { background: white; padding: 40px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); text-align: center; margin-top: 50px; }
@@ -29,6 +29,11 @@
         .scroll-area { max-height: 400px; overflow-y: auto; }
         input[type="text"] { padding: 12px; width: 250px; border: 1px solid #ccc; border-radius: 5px; margin-bottom: 15px; font-size: 1rem; }
         .btn-login { padding: 12px 30px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 1rem; font-weight: bold; }
+        
+        /* 新しいボタンのスタイル */
+        .blacklist-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .btn-clear-all { background: #dc3545; color: white; border: none; padding: 5px 12px; border-radius: 5px; cursor: pointer; font-size: 0.8rem; }
+        .btn-clear-all:hover { background: #a71d2a; }
     </style>
 </head>
 <body>
@@ -50,6 +55,7 @@
     <div class="scoreboard">
         <div class="score-item">解いた数<span id="total-count" class="score-val">0</span></div>
         <div class="score-item">正解数<span id="correct-count" class="score-val">0</span></div>
+        <div class="score-item" style="color: #00d4ff;">残り問題<span id="remaining-count" class="score-val" style="color: #00d4ff;">-</span></div>
         <div class="score-item">正答率<span id="accuracy" class="score-val">0%</span></div>
     </div>
 
@@ -75,7 +81,10 @@
     </div>
     
     <div id="blacklist-container" style="margin-top: 30px; border-top: 2px dashed #ccc; padding-top: 20px;">
-        <h3 style="color: #333;">⬛ ブラックボックス（除外中）</h3>
+        <div class="blacklist-header">
+            <h3 style="color: #333; margin: 0;">⬛ ブラックボックス</h3>
+            <button class="btn-clear-all" onclick="clearAllBlacklist()">全て出題対象に戻す</button>
+        </div>
         <p style="font-size: 0.8rem; color: #666;">正解した問題、または⬛を押した問題はここに入り、出題されません。</p>
         <div class="scroll-area" id="blacklist-list-container">
             <div id="blacklist-list" style="font-size: 0.9rem; color: #666;">除外された問題はありません。</div>
@@ -94,7 +103,7 @@ let correctTotal = 0;
 
 // --- クイズデータ ---
 const rawData = [
- {
+   {
     "q": "企業経営の中核となる方向性を示すものをアルファベット3文字で何というか。",
     "a": "MVV（Mission Vision Value）",
     "d": ["KPI", "OKR", "BCP"],
@@ -925,8 +934,11 @@ function logout() {
 
 function updateScoreboard() {
     const accuracy = totalSolved === 0 ? 0 : Math.round((correctTotal / totalSolved) * 100);
+    const remaining = rawQuestions.length - blacklistedIds.length;
+    
     document.getElementById('total-count').innerText = totalSolved;
     document.getElementById('correct-count').innerText = correctTotal;
+    document.getElementById('remaining-count').innerText = remaining;
     document.getElementById('accuracy').innerText = accuracy + "%";
 }
 
@@ -958,7 +970,7 @@ function loadQuestion() {
     const availableQuestions = rawQuestions.filter(q => !blacklistedIds.includes(q.id));
     
     if (availableQuestions.length === 0) {
-        alert("全ての問題がブラックボックスに入っているか、問題がありません。");
+        alert("全問クリアです！素晴らしい！一括解除ボタンで最初からやり直せます。");
         return;
     }
 
@@ -978,14 +990,13 @@ function checkAnswer(selected, correct, explanation) {
     
     if (isCorrect) {
         correctTotal++;
-        // ★正解した場合はブラックボックスに自動追加（確認なし）
         if (!blacklistedIds.includes(currentQuestion.id)) {
             blacklistedIds.push(currentQuestion.id);
             saveAndSyncBlacklist();
         }
     }
     
-    document.getElementById('result-label').innerText = isCorrect ? "✅ 正解！ (ブラックボックスに保存されました)" : "❌ 不正解...（正解： " + correct + "）";
+    document.getElementById('result-label').innerText = isCorrect ? "✅ 正解！ (除外リストに保存)" : "❌ 不正解...（正解： " + correct + "）";
     feedback.className = isCorrect ? "correct-ui" : "incorrect-ui";
     document.getElementById('explanation-text').innerText = "解説： " + explanation;
     feedback.style.display = 'block';
@@ -1008,16 +1019,13 @@ function toggleCheck() {
     renderReviewList();
 }
 
-// --- ブラックボックス登録・解除ロジック ---
-// ★⬛ボタン：確認なしで即登録し、次の問題へ
 function addToBlacklistDirectly() {
     if (!currentQuestion) return;
-    
     if (!blacklistedIds.includes(currentQuestion.id)) {
         blacklistedIds.push(currentQuestion.id);
         saveAndSyncBlacklist();
     }
-    loadQuestion(); // すぐに次の問題へ
+    loadQuestion();
 }
 
 function removeFromBlacklist(id) {
@@ -1027,10 +1035,24 @@ function removeFromBlacklist(id) {
     }
 }
 
+/* ★一括解除関数 */
+function clearAllBlacklist() {
+    if (blacklistedIds.length === 0) {
+        alert("除外されている問題はありません。");
+        return;
+    }
+    if (confirm("登録されているすべての除外を解除し、全問を出題対象に戻しますか？")) {
+        blacklistedIds = [];
+        saveAndSyncBlacklist();
+        alert("すべての問題を復活させました！");
+    }
+}
+
 function saveAndSyncBlacklist() {
     localStorage.setItem('it-quiz-black-' + currentUser, JSON.stringify(blacklistedIds));
     renderBlacklist();
     updateBlacklistUI();
+    updateScoreboard();
 }
 
 function renderBlacklist() {
